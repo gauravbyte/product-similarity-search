@@ -1,19 +1,6 @@
 # sap-cxii-tech-ex-01
 Technical Exercise for SAP.
 
-## Amazon Dataset for Apparel: 
-Ref: [Kaggle](https://www.kaggle.com/datasets/promptcloud/amazon-fashion-products-2020)
-- Download and unzip the file on local (if you don't have a kaggle account we have checked in the file under `data`) 
-- Unzip and you should have a file in `ldjson` format. 
-  - `cd data; unzip archive.zip` 
-```bash
-.
-├── archive.zip
-└── marketing_sample_for_amazon_com-amazon_fashion_products__20200201_20200430__30k_data.ldjson
-
-1 directory, 2 files
-```
-
 ## What is the goal? 
 You are tasked with implementing a product similarity search feature using the given dataset. Given a product’s `unique ID` (uniq_id), your goal is to retrieve a list of `similar products` based on `specific attributes`.
 
@@ -48,3 +35,19 @@ If multiple products have the same similarity score, the tie-breaker can be base
 ## Bonus:  
 - Write a microservice with an endpoint `GET /find_similar_products` which takes two request params `(product_id, num_similar)` and returns the result.
 - You can use any python frameworks for the web app `(e.g Flask, FastAPI, Django, etc.)`
+
+
+## How to?
+## Amazon Dataset for Apparel: 
+- You will be working with the `2020` Amazon data below: 
+Ref: [Kaggle](https://www.kaggle.com/datasets/promptcloud/amazon-fashion-products-2020)
+- Download and unzip the file on local (if you don't have a kaggle account we have checked in the file under `data`) 
+- Unzip and you should have a file in `ldjson` format. 
+  - `cd data; unzip archive.zip` 
+```bash
+.
+├── archive.zip
+└── marketing_sample_for_amazon_com-amazon_fashion_products__20200201_20200430__30k_data.ldjson
+
+1 directory, 2 files
+```
