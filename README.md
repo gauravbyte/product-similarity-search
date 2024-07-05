@@ -80,7 +80,7 @@ if __name__ == "__main__":
 ## Bonus - Part 3: Optimization Problem with Vector Searches (Bonus)
 - You are tasked with optimizing the similarity search function to handle large datasets efficiently using vector searches. 
 - Implement this using any similarity search alogrithm avaiable on hugging face or even OSS papers for faster nearest neighbor search.
-- You should reference the paper and algoritms you use, and you should be able to explain why you chose this implementation.
+- You should reference the paper and algorithms you use, and you should be able to explain why you chose this implementation.
 
 ## Extra How to Help? 
 ## Amazon Dataset for Apparel: 
