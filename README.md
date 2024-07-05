@@ -30,7 +30,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from typing import List
 
 # Assume df is already loaded with the dataset
-## You could write a btter data loader for this as well, and find an alternative to pandas.
+## You could write a better data loader for this as well, and find an alternative to pandas.
 df = pd.read_json('data/marketing_sample_for_amazon_com-amazon_fashion_products__20200201_20200430__30k_data.ldjson', lines=True)
 
 def find_similar_products(product_id: str, num_similar: int) -> List[str]:
