@@ -14,14 +14,14 @@ def find_similar_products(product_id: str, num_similar: int) -> List[str]:
 ```
 
 The function should return a list of num_similar product IDs that are most similar to the given product_id. 
-The similarity between products should be determined based on the following attributes: `brand, sales_price, weight, and rating`.
+The similarity between products should be determined based on the following attributes: `brand, color, price, image, sales_price, weight, and rating` NOTE You can dedcide if you also want to use other attributes in the dataset.
 You should consider the following requirements while implementing the function:
- - The function should first retrieve the attributes `(brand, sales_price, weight, rating)` of the product identified by the given `product_id`.
+ - The function should first retrieve the attributes `(brand, sales_price, weight, rating, .. all others you pick)` of the product identified by the given `product_id`.
  - The function should then compare these attributes with all other products in the dataset.
  - Calculate a similarity score between the given product and each other product using a suitable similarity measure `(e.g., Euclidean distance, cosine similarity, etc.)`.
  - Sort the products based on their similarity scores in descending order.
  - Return a `list of num_similar product IDs` that are most similar to the given `product_id`.
-
+   
 ### Here is the sample code
 
 ```python
@@ -87,7 +87,8 @@ if __name__ == "__main__":
 - You will be working with the `2020` Amazon data below: 
 Ref: [Kaggle](https://www.kaggle.com/datasets/promptcloud/amazon-fashion-products-2020)
 - Download and unzip the file on local (if you don't have a kaggle account we have checked in the file under `data`) 
-- Unzip and you should have a file in `ldjson` format. 
+- Unzip and you should have a file in `ldjson` format.
+- For data exploration look at all the attributes that are avaialbe to you. 
   - `cd data; unzip archive.zip` 
 ```bash
 .
@@ -96,3 +97,5 @@ Ref: [Kaggle](https://www.kaggle.com/datasets/promptcloud/amazon-fashion-product
 
 1 directory, 2 files
 ```
+
+
