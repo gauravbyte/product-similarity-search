@@ -2,7 +2,32 @@
 Technical Exercise for SAP. 
 
 ## What is the goal? 
-You are tasked with implementing a product similarity search feature using the given dataset. Given a product’s `unique ID` (uniq_id), your goal is to retrieve a list of `similar products` based on `specific attributes`.
+You are tasked with implementing a product similarity search feature using the given dataset. Given a product’s `unique ID` (uniq_id), your goal is to retrieve a list of `similar products` based on `specific attributes`. As you think and solve the problem below, 
+
+### Explain your design decisions and trade-offs
+### Suggested Approaches:
+- Implement approximate nearest neighbors using libraries like FAISS, Annoy, or HNSW
+- Utilize dimensionality reduction techniques (e.g., PCA, t-SNE) before similarity computation
+- Consider caching strategies for frequently accessed products
+
+### Multimodal Similarity Search (Optional)
+- Extend the similarity search to incorporate both text and image features, creating a multimodal product recommendation system.
+#### Text-Based Similarity:
+- Extract meaningful features from product descriptions, names, and other text attributes-
+- Use natural language processing techniques to capture semantic similarity between products
+- Implement techniques like TF-IDF, word embeddings, or transformer-based embeddings
+  
+#### Image-Based Similarity:
+- For products with available image URLs, download and process the images
+- Extract visual features using pre-trained convolutional neural networks (e.g., ResNet, EfficientNet)
+- Calculate visual similarity between products
+
+### Combined Approach:
+- Develop a method to combine text-based and image-based similarity scores
+- Allow configurable weighting between different similarity components
+- Implement a fallback mechanism when certain features are unavailable.
+
+--- 
 
 ## Part 1: Similarity Search Function
 
@@ -81,6 +106,7 @@ if __name__ == "__main__":
 - You are tasked with optimizing the similarity search function to handle large datasets efficiently using vector searches. 
 - Implement this using any similarity search alogrithm avaiable on hugging face or even OSS papers for faster nearest neighbor search.
 - You should reference the paper and algorithms you use, and you should be able to explain why you chose this implementation.
+
 
 ## Extra How to Help? 
 ## Amazon Dataset for Apparel: 
