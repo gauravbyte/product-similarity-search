@@ -12,6 +12,9 @@ project.md
 # Generated pipeline artifacts (rebuilt by src/pipeline/clean.py)
 artifacts/
 
+# Local CodeGraph index (machine-local, not part of the project)
+.codegraph/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
