@@ -103,3 +103,20 @@ Embeddings live in high-dimensional space. L2 distance degrades there (curse of 
 ---
 
 *Phase 1 done. No data changes yet — all observations. Phase 2 is the cleaning script.*
+
+---
+---
+
+# Phase 2 Thoughts — Building the ETL Pipeline
+
+Turning the EDA decisions into code (`src/pipeline/`). Why it looks the way it does:
+
+- **Package, not one script.** One module per stage (`extract → transform → impute → features → load`, wired in `run.py`). Parsers are pure functions in their own file, easy to test. Runs as `python -m src.pipeline`.
+- **Whitelist, don't drop.** `transform()` picks the columns I want rather than dropping junk — a new junk column in a future dump is ignored by default.
+- **Dedup correction.** EDA said "keep most recent `crawl_timestamp`", but I dropped that column, so `drop_duplicates(keep="first")`. The crawl is one short window, so dup ASINs are near-identical anyway. 30,000 → 29,529.
+- **Data filling:** price → category median then global fallback (category-median alone leaves ~850 rows where every product is unpriced); discount → 0; brand/category → `"unknown"`; browsenode → -1; rating/rank → median.
+- **Features:** `log1p` price + rank to compress skew; min-max scale to [0,1]; label-encode (not one-hot — brand is ~6.5k unique). I persist scaler params + label vocabularies to `feature_meta.json` so Phase 3 encodes a query product *identically* — otherwise distances are meaningless.
+- **Parquet over CSV** — preserves dtypes, columnar, smaller. Costs one dep (`pyarrow`).
+- **Multimodal-ready:** `text_blob` feeds the text embedder; `primary_image_url` is carried through untouched so the image stage attaches later with no cleaning changes. Embedding/FAISS is *not* in this phase — ETL only.
+
+*Phase 2 done — `python -m src.pipeline` → `products_clean.parquet` (29,529 × 25) + `feature_meta.json`. Next: `embed.py`.*

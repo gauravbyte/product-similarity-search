@@ -9,6 +9,9 @@ data/*.ldjson
 notes.txt
 project.md
 
+# Generated pipeline artifacts (rebuilt by src/pipeline/clean.py)
+artifacts/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

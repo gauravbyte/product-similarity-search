@@ -1,0 +1,4 @@
+# Phase 2 — ETL / data-preparation pipeline
+pandas>=2.0
+numpy>=1.24
+pyarrow>=14.0       # parquet output
