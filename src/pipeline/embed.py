@@ -53,8 +53,12 @@ def run() -> np.ndarray:
     vectors = build_vectors(df)
 
     np.save(VECTORS_PATH, vectors)
-    id_map = df[["uniq_id", "product_name"]].to_dict("records")
-    ID_MAP_PATH.write_text(json.dumps(id_map))
+    # id_map carries the display fields the API serves, so the runtime never
+    # needs pandas/parquet — just this JSON. to_json handles dtypes + NaN->null.
+    display = df[["uniq_id", "product_name", "brand", "child_category",
+                  "sales_price", "primary_image_url"]].copy()
+    display["sales_price"] = display["sales_price"].round(0)
+    display.to_json(ID_MAP_PATH, orient="records")
     print(f"wrote {VECTORS_PATH}  ({vectors.shape[0]:,} x {vectors.shape[1]})")
     print(f"wrote {ID_MAP_PATH}")
     return vectors

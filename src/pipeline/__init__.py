@@ -1,8 +1,8 @@
 """Amazon fashion ETL pipeline (Phase 2).
 
 Run as a module:  python -m src.pipeline
-Or call directly:  from src.pipeline import run; run()
-"""
-from .run import run
 
-__all__ = ["run"]
+Note: we intentionally do NOT re-export run() here. Importing it would pull in
+the heavy embed path (torch/SBERT); keeping __init__ light means the API can
+import pipeline.config without dragging in those deps at serve time.
+"""

@@ -8,8 +8,10 @@ VECTORS := artifacts/hybrid_vectors.npy
 
 N  ?= 10        # number of similar products for `find-similar`
 ID ?=           # product uniq_id for `find-similar` (blank = demo with first product)
+PORT ?= 8000
+IMAGE ?= fashion-similarity
 
-.PHONY: help install etl embed verify find-similar benchmark all clean
+.PHONY: help install etl embed verify find-similar benchmark serve docker-build docker-run all clean
 
 help:            ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -35,6 +37,15 @@ find-similar: $(VECTORS) ## similar products: make find-similar ID=<uniq_id> N=5
 
 benchmark: $(CLEAN)      ## compare embedding approaches (tfidf / tfidf_svd / sbert)
 	$(PY) -m src.similarity.benchmark
+
+serve: $(VECTORS)        ## run the FastAPI service locally on $(PORT)
+	$(PY) -m uvicorn src.api.main:app --host 0.0.0.0 --port $(PORT)
+
+docker-build:            ## build the API image (multi-stage; builds artifacts inside)
+	docker build -t $(IMAGE) .
+
+docker-run:              ## run the built image on $(PORT)
+	docker run --rm -p $(PORT):8000 $(IMAGE)
 
 all: verify              ## full pipeline end to end (builds artifacts then verifies)
 

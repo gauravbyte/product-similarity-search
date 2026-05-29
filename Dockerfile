@@ -1,20 +1,29 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim
+# Multi-stage build.
+#  stage 1 (builder): full deps incl. torch/SBERT -> generate the artifacts
+#  stage 2 (runtime): lean image, no torch -> just serve the API
+# The serving path only loads the pre-built vectors and does cosine with numpy,
+# so the final image stays small.
 
-# Set the working directory
+# ---- builder: produce artifacts/products_clean.parquet + hybrid_vectors.npy ----
+FROM python:3.10-slim AS builder
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Install any needed packages specified in requirements.txt
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make port 8000 available to the world outside this container
+COPY src/ src/
+COPY data/ data/
+RUN python -m src.pipeline && python -m src.pipeline.embed
+
+# ---- runtime: serve find_similar_products over HTTP ----
+FROM python:3.10-slim
+WORKDIR /app
+
+COPY requirements-serve.txt .
+RUN pip install --no-cache-dir -r requirements-serve.txt
+
+COPY src/ src/
+COPY --from=builder /app/artifacts/ artifacts/
+
 EXPOSE 8000
-
-# Define environment variable
-ENV NAME ProductSimilarityApp
-
-# Run app.py when the container launches
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

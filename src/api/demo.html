@@ -1,0 +1,126 @@
+<!--
+  Self-contained demo UI for the similarity API (no build step, no frameworks).
+  Served by FastAPI at GET / (see src/api/main.py). It only calls the API:
+    GET /search?q=        -> product cards to discover an id
+    GET /similar?product_id=&num_similar=  -> the query product + similar items
+  All product fields (incl. primary_image_url) come straight from those responses.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fashion Similarity Search</title>
+<!-- All styling is inline so the page is a single deployable file. -->
+<style>
+  :root { --bg:#f6f6f8; --card:#fff; --line:#e4e4ea; --ink:#222; --muted:#888; --accent:#c45500; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#232f3e; color:#fff; padding:14px 20px; }
+  header h1 { font-size:18px; margin:0; }
+  header p { margin:4px 0 0; font-size:13px; color:#bbb; }
+  .wrap { max-width:1100px; margin:0 auto; padding:18px 20px; }
+  .searchbar { display:flex; gap:8px; margin-bottom:8px; }
+  .searchbar input { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
+  .searchbar button { padding:10px 18px; border:0; background:var(--accent); color:#fff; border-radius:8px; font-size:15px; cursor:pointer; }
+  h2 { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:22px 0 10px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; cursor:pointer; transition:.12s; display:flex; flex-direction:column; }
+  .card:hover { box-shadow:0 4px 14px rgba(0,0,0,.1); transform:translateY(-2px); }
+  .card .imgbox { aspect-ratio:1; background:#fafafa; display:flex; align-items:center; justify-content:center; }
+  .card img { width:100%; height:100%; object-fit:contain; }
+  .card .body { padding:8px 10px; }
+  .card .name { font-size:12.5px; line-height:1.3; height:48px; overflow:hidden; }
+  .card .meta { margin-top:6px; font-size:12px; color:var(--muted); }
+  .card .price { color:var(--accent); font-weight:600; }
+  .query { display:flex; gap:16px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; align-items:center; }
+  .query img { width:110px; height:110px; object-fit:contain; }
+  .query .price { color:var(--accent); font-weight:700; font-size:17px; }
+  .hint { color:var(--muted); font-size:13px; }
+  .pill { display:inline-block; background:#eef; color:#447; border-radius:20px; padding:1px 8px; font-size:11px; margin-left:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Amazon Fashion — Similarity Search</h1>
+  <p>Search a product, then click it to see visually & semantically similar items.</p>
+</header>
+
+<div class="wrap">
+  <!-- keyword search box -> /search -->
+  <div class="searchbar">
+    <input id="q" placeholder="Try: saree, t-shirt, kurta, formal shirt…" autofocus>
+    <button onclick="runSearch()">Search</button>
+  </div>
+  <div class="hint" id="hint">Type a keyword and hit Search.</div>
+
+  <!-- filled by showSimilar(): the clicked product + its similar items -->
+  <div id="queryBox"></div>
+  <div id="resultsTitle"></div>
+  <div class="grid" id="results"></div>
+
+  <!-- filled by runSearch(): keyword search results -->
+  <h2 id="searchTitle"></h2>
+  <div class="grid" id="searchResults"></div>
+</div>
+
+<script>
+// tiny helpers
+const $ = id => document.getElementById(id);
+// render an <img>, hidden gracefully if the URL is missing or fails to load
+const img = url => url ? `<img src="${url}" loading="lazy" onerror="this.style.display='none'">` : '';
+
+// build one clickable product card; onClick receives the product object
+function card(p, onClick) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `
+    <div class="imgbox">${img(p.primary_image_url)}</div>
+    <div class="body">
+      <div class="name">${p.product_name ?? ''}</div>
+      <div class="meta">${p.brand ?? ''} · ${p.child_category ?? ''}</div>
+      <div class="meta price">₹${Math.round(p.sales_price ?? 0)}</div>
+    </div>`;
+  el.onclick = () => onClick(p);
+  return el;
+}
+
+// keyword search: GET /search -> render matching products as cards
+async function runSearch() {
+  const q = $('q').value.trim();
+  if (!q) return;
+  $('hint').textContent = 'Searching…';
+  $('queryBox').innerHTML = ''; $('results').innerHTML = ''; $('resultsTitle').innerHTML = '';
+  const res = await fetch(`/search?q=${encodeURIComponent(q)}&limit=18`).then(r => r.json());
+  $('hint').textContent = `${res.length} matches for “${q}” — click one to find similar products.`;
+  $('searchTitle').textContent = res.length ? 'Search results' : 'No matches';
+  const grid = $('searchResults'); grid.innerHTML = '';
+  res.forEach(p => grid.appendChild(card(p, showSimilar)));
+}
+
+// clicked a product: GET /similar -> show it + its neighbours (results stay clickable)
+async function showSimilar(p) {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const data = await fetch(`/similar?product_id=${p.uniq_id}&num_similar=12`).then(r => r.json());
+  const q = data.query;
+  $('queryBox').innerHTML = `
+    <div class="query">
+      ${img(q.primary_image_url)}
+      <div>
+        <div>${q.product_name}</div>
+        <div class="card meta" style="border:0;padding:0;margin-top:6px">
+          ${q.brand} <span class="pill">${q.child_category}</span>
+        </div>
+        <div class="price">₹${Math.round(q.sales_price)}</div>
+      </div>
+    </div>`;
+  $('resultsTitle').innerHTML = '<h2>Similar products</h2>';
+  const grid = $('results'); grid.innerHTML = '';
+  data.results.forEach(r => grid.appendChild(card(r, showSimilar)));
+}
+
+// allow pressing Enter in the search box
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+</script>
+</body>
+</html>

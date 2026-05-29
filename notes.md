@@ -146,3 +146,15 @@ They basically tie — and that's expected: `text_blob` literally contains the b
 **Decision: go with SBERT.** It ties on the surface metrics and is ~30× slower to build, but the real product/query text in production won't be clean token overlap, and SBERT generalises there where TF-IDF can't. The benchmark is configurable (`--approaches --sample --k ...`) so this is an evidence-based choice, not an assumption — and TF-IDF stays a documented fallback if build cost ever matters.
 
 *Phase 3 done — `python -m src.pipeline.embed` → `hybrid_vectors.npy` (29,529 × 392) + `id_map.json`; `find_similar_products()` in `src/similarity/engine.py`.*
+
+---
+
+# Phase 4 Thoughts — FastAPI Service + Docker
+
+- **Endpoints:** `GET /find_similar_products?product_id=&num_similar=` → `List[str]`, plus `GET /health`. Index loads once at startup (lifespan) and is reused — each request is just a cosine scan.
+- **Error codes:** 404 unknown product_id, 422 for `num_similar` outside 1–50 (FastAPI's built-in query validation), 503 if artifacts aren't present yet. Swagger UI comes free at `/docs`.
+- **The serving path needs no torch.** `engine.py` only loads the `.npy` vectors + does numpy cosine — SBERT was only needed to *build* them. So I split the import boundary: dropped the eager `run` re-export from `pipeline/__init__.py` so importing `config` doesn't drag in torch. Verified the API import pulls in zero heavy modules.
+- **Multi-stage Docker:** stage 1 (full deps incl. torch) builds the artifacts; stage 2 installs only `requirements-serve.txt` (fastapi/uvicorn/numpy) and copies the artifacts across → small, torch-free runtime image. `make serve` runs it locally; verified live over HTTP (not just TestClient).
+- **Demo endpoints + UI.** Added `GET /search?q=` (find by name), `GET /products/{id}`, `GET /similar` (full details incl. image). `GET /` serves a self-contained HTML page: search → click a product → see similar items as image cards. Display fields (brand/category/price/image_url) are baked into `id_map.json` at embed time so the API serves them from memory — keeps the runtime image pandas-free. CORS is open so a hosted frontend can call it.
+
+*Phase 4 done — `make serve`, open `/` for the image demo. `GET /find_similar_products` is the spec contract; `/search`, `/products/{id}`, `/similar` back the UI. Docker: multi-stage, `make docker-build`. Next: Part 3 (FAISS) / Part 4 (LLM NL query) / multimodal.*

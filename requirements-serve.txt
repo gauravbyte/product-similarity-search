@@ -1,0 +1,5 @@
+# Runtime-only deps for the API container (no torch/SBERT — the serving path
+# just loads the pre-built vectors and does cosine with numpy).
+fastapi>=0.110
+uvicorn[standard]>=0.27
+numpy>=1.24

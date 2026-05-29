@@ -16,12 +16,16 @@ from ..pipeline.config import VECTORS_PATH, ID_MAP_PATH
 
 
 class SimilarityIndex:
-    """In-memory cosine index over the hybrid vectors (loaded once)."""
+    """In-memory cosine index over the hybrid vectors (loaded once).
+
+    `records` holds the per-product display fields (name, brand, price, image)
+    so the API can serve details without touching pandas/parquet at runtime.
+    """
 
     def __init__(self):
         self.vectors = np.load(VECTORS_PATH)
-        self.id_map = json.loads(ID_MAP_PATH.read_text())
-        self.position = {row["uniq_id"]: i for i, row in enumerate(self.id_map)}
+        self.records = json.loads(ID_MAP_PATH.read_text())
+        self.position = {row["uniq_id"]: i for i, row in enumerate(self.records)}
 
     def query(self, product_id: str, num_similar: int) -> List[str]:
         if product_id not in self.position:
@@ -35,7 +39,18 @@ class SimilarityIndex:
         n = min(num_similar, len(scores) - 1)
         top = np.argpartition(-scores, n)[:n]
         top = top[np.argsort(-scores[top])]
-        return [self.id_map[j]["uniq_id"] for j in top]
+        return [self.records[j]["uniq_id"] for j in top]
+
+    def record(self, product_id: str) -> "dict | None":
+        """Display fields for one product (None if unknown)."""
+        i = self.position.get(product_id)
+        return self.records[i] if i is not None else None
+
+    def search(self, text: str, limit: int) -> List[dict]:
+        """Substring match on product_name — lets a demo discover product_ids."""
+        t = text.lower()
+        hits = [r for r in self.records if t in r["product_name"].lower()]
+        return hits[:limit]
 
 
 _index: "SimilarityIndex | None" = None

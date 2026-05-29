@@ -1,0 +1,18 @@
+# Keep the build context small — only src/, data/ and requirements are needed.
+.venv
+.git
+.gitignore
+.idea
+.codegraph
+**/__pycache__
+*.pyc
+artifacts
+scripts
+*.ipynb
+notes.md
+notes.txt
+project.md
+README.md
+LICENSE
+Makefile
+data_download.sh
