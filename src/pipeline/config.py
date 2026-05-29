@@ -24,3 +24,20 @@ DETAIL_SKIP_KEYS = {
     "ASIN", "Customer_Reviews", "Amazon_Bestsellers_Rank",
     "Date_first_available_at_Amazon_in", "Item_part_number",
 }
+
+# --- Embedding / similarity (Phase 3) --------------------------------------
+SBERT_MODEL = "all-MiniLM-L6-v2"        # 384-dim, fast on CPU
+TEXT_WEIGHT = 0.7                        # text vs structured blend in the hybrid vector
+STRUCT_WEIGHT = 0.3
+
+# The structured half of the hybrid vector: continuous + binary features only.
+# Categoricals (brand/category) are NOT here — their label codes aren't valid
+# cosine distances; their names live in text_blob, so the embedding handles them.
+STRUCTURED_FEATURES = [
+    "price_norm", "rating_norm", "discount_norm", "rank_norm",
+    "is_prime", "is_fba", "is_best_seller", "has_reviews",
+]
+
+CLEAN_PATH = OUT_DIR / "products_clean.parquet"
+VECTORS_PATH = OUT_DIR / "hybrid_vectors.npy"
+ID_MAP_PATH = OUT_DIR / "id_map.json"

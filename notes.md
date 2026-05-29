@@ -120,3 +120,29 @@ Turning the EDA decisions into code (`src/pipeline/`). Why it looks the way it d
 - **Multimodal-ready:** `text_blob` feeds the text embedder; `primary_image_url` is carried through untouched so the image stage attaches later with no cleaning changes. Embedding/FAISS is *not* in this phase — ETL only.
 
 *Phase 2 done — `python -m src.pipeline` → `products_clean.parquet` (29,529 × 25) + `feature_meta.json`. Next: `embed.py`.*
+
+---
+
+# Phase 3 Thoughts — Embeddings + `find_similar_products`
+
+- **Hybrid vector = 0.7·text + 0.3·structured.** Text half is SBERT (`all-MiniLM-L6-v2`, 384-dim) on `text_blob`; structured half is the 8 continuous/binary features. L2-normalise each half, scale by √weight, concat → rows come out unit-norm, so cosine == dot product.
+- **Categoricals stay out of the numeric block.** A `brand_code` of 5 vs 6 isn't "closer"; brand/category names are already in `text_blob`, so the embedding handles them semantically. Cleaner than fake one-hot distance.
+- **Brute-force cosine, not FAISS (yet).** At 29.5k rows one matrix-multiply scores everything in ~5ms — exact, zero extra deps, trivial to read. FAISS is the Part-3 bonus optimisation.
+- **Spot-check looked right:** a Pantaloons tee returns other Pantaloons slim-fit tees at similar prices; a Bengali handloom saree returns near-identical handloom sarees. Brand+category+price all line up without being hard filters.
+- **Multimodal hook still open:** add an image-embedding block to the hybrid concat later — the structure already supports a third weighted half.
+
+## Did I pick the right embedding? — benchmarked 3 (`benchmark.py`)
+
+No labelled relevance data, so I used label-based proxies: good neighbours should share the query's category + brand and sit at a similar price. 500 random queries, k=10:
+
+| approach | category_match | brand_match | price_diff_% | build |
+|---|---|---|---|---|
+| tfidf | 0.695 | 0.471 | 28.3 | 3.7s |
+| tfidf_svd | 0.750 | 0.314 | 28.3 | 6.1s |
+| sbert | 0.742 | 0.431 | 29.8 | 115s |
+
+They basically tie — and that's expected: `text_blob` literally contains the brand name + category path, so TF-IDF wins on pure token overlap. The proxies can't see SBERT's actual advantage — semantic matching of synonyms / paraphrases / "kurta" vs "kurti" / transliterated Hindi / typos — because category and brand are spelled out in the text.
+
+**Decision: go with SBERT.** It ties on the surface metrics and is ~30× slower to build, but the real product/query text in production won't be clean token overlap, and SBERT generalises there where TF-IDF can't. The benchmark is configurable (`--approaches --sample --k ...`) so this is an evidence-based choice, not an assumption — and TF-IDF stays a documented fallback if build cost ever matters.
+
+*Phase 3 done — `python -m src.pipeline.embed` → `hybrid_vectors.npy` (29,529 × 392) + `id_map.json`; `find_similar_products()` in `src/similarity/engine.py`.*
