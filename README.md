@@ -45,6 +45,7 @@ see similar items with images), or **/docs** for the Swagger UI.
 ### Other make targets
 ```
 make find-similar ID=<uniq_id> N=5   # CLI: similar products for one id
+make index                           # build the FAISS ANN index (Part 3)
 make verify                          # smoke-test the engine (asserts self-excluded, unique, KeyError)
 make benchmark                       # compare embedding approaches (tfidf / tfidf_svd / sbert)
 make docker-build / docker-run       # containerised API (multi-stage image)
@@ -104,8 +105,10 @@ EDA_Amazon_Marketing_Data.ipynb   exploratory analysis
   documented fallback.
 - **Categoricals via text, not numeric codes.** A `brand_code` of 5 vs 6 isn't "closer";
   brand/category names live in the text blob, so the embedding handles them.
-- **Brute-force cosine** at 30k rows (~5 ms/query, exact). FAISS is the planned Part-3
-  optimisation, not needed at this scale yet.
+- **FAISS IVFFlat ANN** (Part 3) for sub-linear search — `nlist`/`nprobe` tuned by a
+  recall-vs-latency sweep to ~7.7× faster than brute force at 0.99 recall@10. The engine
+  falls back to exact brute-force cosine if FAISS isn't present, so `find_similar_products`
+  always works; `/health` reports the active backend.
 - **Lean, torch-free serving image.** SBERT is only needed to *build* vectors; the API
   loads the `.npy` and does numpy cosine. Multi-stage Docker keeps the runtime small.
 - **Data filling:** price → category-median then global fallback; discount → 0 (no
@@ -122,7 +125,7 @@ EDA_Amazon_Marketing_Data.ipynb   exploratory analysis
 | Part 1 — `find_similar_products` | Done |
 | Part 2 — FastAPI service + Docker | Done |
 | Embedding evaluation (3 approaches) | Done |
-| Part 3 (bonus) — FAISS ANN index | Planned — engine is drop-in ready |
+| Part 3 (bonus) — FAISS ANN index | Done — IVFFlat (tuned nlist=400/nprobe=50), ~7.7× faster at 0.99 recall@10; brute-force fallback |
 | Multimodal (bonus) — image embeddings | Planned — pipeline carries `primary_image_url` for this |
 | LLM NL-query endpoint + scaling write-up | Planned — design captured, build pending |
 

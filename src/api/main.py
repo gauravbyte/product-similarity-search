@@ -60,7 +60,8 @@ def demo():
 def health() -> dict:
     index = state["index"]
     return {"status": "ok" if index else "unavailable",
-            "index_size": len(index.records) if index else 0}
+            "index_size": len(index.records) if index else 0,
+            "backend": index.backend if index else None}
 
 
 @app.get("/find_similar_products")

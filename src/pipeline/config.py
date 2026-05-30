@@ -41,3 +41,9 @@ STRUCTURED_FEATURES = [
 CLEAN_PATH = OUT_DIR / "products_clean.parquet"
 VECTORS_PATH = OUT_DIR / "hybrid_vectors.npy"
 ID_MAP_PATH = OUT_DIR / "id_map.json"
+
+FAISS_INDEX_PATH = OUT_DIR / "faiss.index"
+# Tuned by sweeping nlist x nprobe (see notes.md): fastest point that still
+# holds recall@10 >= 0.99 (~0.99 recall, ~7.7x faster than brute force).
+FAISS_NLIST = 400      # Voronoi cells (k-means partitions of the vector space)
+FAISS_NPROBE = 50      # cells probed per query: recall/speed knob

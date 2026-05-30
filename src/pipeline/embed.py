@@ -53,14 +53,14 @@ def run() -> np.ndarray:
     vectors = build_vectors(df)
 
     np.save(VECTORS_PATH, vectors)
-    # id_map carries the display fields the API serves, so the runtime never
-    # needs pandas/parquet — just this JSON. to_json handles dtypes + NaN->null.
     display = df[["uniq_id", "product_name", "brand", "child_category",
                   "sales_price", "primary_image_url"]].copy()
     display["sales_price"] = display["sales_price"].round(0)
     display.to_json(ID_MAP_PATH, orient="records")
     print(f"wrote {VECTORS_PATH}  ({vectors.shape[0]:,} x {vectors.shape[1]})")
     print(f"wrote {ID_MAP_PATH}")
+    # NB: the FAISS index is built in a *separate* step (python -m src.similarity.ann)
+    # — faiss and torch both link libomp, so building it here would segfault.
     return vectors
 
 

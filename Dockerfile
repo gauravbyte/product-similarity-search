@@ -13,7 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ src/
 COPY data/ data/
-RUN python -m src.pipeline && python -m src.pipeline.embed
+# each step is its own process — the FAISS build must not share a process with torch
+RUN python -m src.pipeline && python -m src.pipeline.embed && python -m src.similarity.ann
 
 # ---- runtime: serve find_similar_products over HTTP ----
 FROM python:3.10-slim

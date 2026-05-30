@@ -5,6 +5,7 @@ pyarrow>=14.0              # parquet output
 
 # Phase 3 — embeddings + similarity engine
 sentence-transformers>=2.2  # SBERT text embeddings (pulls torch, transformers)
+faiss-cpu>=1.8              # ANN index for fast similarity search (Part 3 bonus)
 
 # Phase 4 — API service
 fastapi>=0.110

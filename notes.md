@@ -157,4 +157,15 @@ They basically tie — and that's expected: `text_blob` literally contains the b
 - **Multi-stage Docker:** stage 1 (full deps incl. torch) builds the artifacts; stage 2 installs only `requirements-serve.txt` (fastapi/uvicorn/numpy) and copies the artifacts across → small, torch-free runtime image. `make serve` runs it locally; verified live over HTTP (not just TestClient).
 - **Demo endpoints + UI.** Added `GET /search?q=` (find by name), `GET /products/{id}`, `GET /similar` (full details incl. image). `GET /` serves a self-contained HTML page: search → click a product → see similar items as image cards. Display fields (brand/category/price/image_url) are baked into `id_map.json` at embed time so the API serves them from memory — keeps the runtime image pandas-free. CORS is open so a hosted frontend can call it.
 
-*Phase 4 done — `make serve`, open `/` for the image demo. `GET /find_similar_products` is the spec contract; `/search`, `/products/{id}`, `/similar` back the UI. Docker: multi-stage, `make docker-build`. Next: Part 3 (FAISS) / Part 4 (LLM NL query) / multimodal.*
+---
+
+# Phase 5 Thoughts — FAISS ANN (the bonus)
+
+- **Why ANN at all.** Brute-force cosine is exact but O(N) per query. The bonus asks for efficient search on larger catalogues, so I added a FAISS **IVFFlat** index: k-means splits the vectors into `nlist` cells and a query only scans the `nprobe` nearest cells instead of all 29.5k rows. Vectors are unit-norm so I use `METRIC_INNER_PRODUCT` (= cosine).
+- **Tuned nlist × nprobe** by sweeping 50–400 × 1–50 (recall@10 vs exact + latency, 300 queries). Criterion: fastest point still ≥0.99 recall → **nlist=400, nprobe=50** (recall 0.99, ~0.24 ms/query vs ~1.8 ms brute, ~7.7×). My first guess (nlist=100/nprobe=10) was only 0.957 recall, so the sweep was worth it. `nprobe` is the recall/speed knob.
+- **Read the Faiss paper** — "The Faiss library", Douze et al. 2024 ([arXiv:2401.08281](https://arxiv.org/pdf/2401.08281)). Key understanding: vector search is a **3-axis trade-off — speed vs recall vs memory**. IVF buys speed by probing fewer cells (costs recall); `nlist` should scale with the dataset size; and when *memory* becomes the bottleneck at scale you add **PQ/OPQ** to compress the vectors — IVF+PQ is the standard production combo. My IVFFlat keeps full float vectors, i.e. it spends memory to keep recall high — the right call at 30k, and the documented upgrade path is IVF+PQ (and the same index runs on GPU).
+- **Why not Annoy/HNSW.** FAISS is the de-facto standard, has a clean IVF→IVFPQ upgrade path for when the catalogue won't fit in RAM, and is GPU-upgradeable. Overkill at 30k, but the point is the scaling story.
+- **Graceful fallback.** The engine loads FAISS if the index + library exist, else falls back to exact brute-force. So `find_similar_products` always works; `/health` reports which backend is live.
+- **Gotcha I hit:** building the index inside `embed.py` segfaulted — `faiss` and `torch` both link libomp and collide in one process on macOS. Fix: the index is its own step (`python -m src.similarity.ann`, also a separate `RUN`/`-m` in Docker), never sharing a process with SBERT.
+
+*Part 3 done — `make index` → `faiss.index`; engine auto-uses it (`backend: faiss` in `/health`). Next: multimodal images / k8s manifests.*
