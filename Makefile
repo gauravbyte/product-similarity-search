@@ -12,7 +12,7 @@ ID ?=           # product uniq_id for `find-similar` (blank = demo with first pr
 PORT ?= 8000
 IMAGE ?= fashion-similarity
 
-.PHONY: help install etl embed index verify find-similar benchmark serve docker-build docker-run all clean
+.PHONY: help install etl embed index verify verify-part4 find-similar benchmark serve docker-build docker-run all clean
 
 help:            ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -37,6 +37,9 @@ index: $(INDEX)          ## build the FAISS ANN index -> faiss.index
 
 verify: $(INDEX)         ## smoke-test find_similar_products on the real data
 	$(PY) -m scripts.verify
+
+verify-part4: $(INDEX)   ## smoke-test semantic_search and nl_query endpoints
+	$(PY) -m scripts.verify_part4
 
 find-similar: $(INDEX)   ## similar products: make find-similar ID=<uniq_id> N=5
 	$(PY) -m scripts.find_similar --id "$(ID)" --n $(N)

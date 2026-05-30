@@ -47,6 +47,7 @@ see similar items with images), or **/docs** for the Swagger UI.
 make find-similar ID=<uniq_id> N=5   # CLI: similar products for one id
 make index                           # build the FAISS ANN index (Part 3)
 make verify                          # smoke-test the engine (asserts self-excluded, unique, KeyError)
+make verify-part4                    # smoke-test semantic_search + nl_query
 make benchmark                       # compare embedding approaches (tfidf / tfidf_svd / sbert)
 make docker-build / docker-run       # containerised API (multi-stage image)
 make clean                           # remove generated artifacts
@@ -60,6 +61,8 @@ make clean                           # remove generated artifacts
 |----------|-------------|
 | `GET /find_similar_products?product_id=&num_similar=` | the spec contract — returns `List[str]` of uniq_ids |
 | `GET /similar?product_id=&num_similar=` | same ranking, but full product details incl. image (for the UI) |
+| `GET /semantic_search?q=&num_results=` | Part 4 free-text semantic search using query-time text embeddings |
+| `POST /nl_query` | Part 4 natural-language query: parse simple filters, then semantic search + filtering |
 | `GET /search?q=&limit=` | find products by name keyword (discovery) |
 | `GET /products/{product_id}` | one product's details |
 | `GET /health` | service + index status |
@@ -109,8 +112,12 @@ EDA_Amazon_Marketing_Data.ipynb   exploratory analysis
   recall-vs-latency sweep to ~7.7× faster than brute force at 0.99 recall@10. The engine
   falls back to exact brute-force cosine if FAISS isn't present, so `find_similar_products`
   always works; `/health` reports the active backend.
-- **Lean, torch-free serving image.** SBERT is only needed to *build* vectors; the API
-  loads the `.npy` and does numpy cosine. Multi-stage Docker keeps the runtime small.
+- **AI query layer (Part 4).** `/semantic_search` embeds free-text queries with the same
+  text embedding model used for the catalogue. `/nl_query` keeps a small parser boundary
+  where an LLM can plug in, and uses local parsing for simple price/brand filters so the
+  service remains runnable offline.
+- **Serving image.** The runtime loads pre-built vectors/FAISS for product-id similarity;
+  Part 4 also includes sentence-transformers for query-time semantic search.
 - **Data filling:** price → category-median then global fallback; discount → 0 (no
   discount is a real state); brand/category → `"unknown"`. Full rationale in `notes.md`.
 
@@ -126,8 +133,8 @@ EDA_Amazon_Marketing_Data.ipynb   exploratory analysis
 | Part 2 — FastAPI service + Docker | Done |
 | Embedding evaluation (3 approaches) | Done |
 | Part 3 (bonus) — FAISS ANN index | Done — IVFFlat (tuned nlist=400/nprobe=50), ~7.7× faster at 0.99 recall@10; brute-force fallback |
+| Part 4 — semantic search + LLM-ready NL-query endpoint + scaling write-up | Done — `/semantic_search`, `/nl_query`, local parser boundary, architecture doc |
 | Multimodal (bonus) — image embeddings | Planned — pipeline carries `primary_image_url` for this |
-| LLM NL-query endpoint + scaling write-up | Planned — design captured, build pending |
 
 ---
 

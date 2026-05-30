@@ -1,8 +1,6 @@
 # Multi-stage build.
 #  stage 1 (builder): full deps incl. torch/SBERT -> generate the artifacts
 #  stage 2 (runtime): lean image, no torch -> just serve the API
-# The serving path only loads the pre-built vectors and does cosine with numpy,
-# so the final image stays small.
 
 # ---- builder: produce artifacts/products_clean.parquet + hybrid_vectors.npy ----
 FROM python:3.10-slim AS builder

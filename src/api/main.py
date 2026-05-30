@@ -1,18 +1,8 @@
-"""FastAPI service for the product similarity search (Part 2).
+"""FastAPI service — product similarity search + NL query layer."""
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "1")          # prevent fork+OpenMP segfault on macOS
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-Core:
-  GET /find_similar_products?product_id=&num_similar=   -> List[str]   (the spec contract)
-  GET /health
-
-Demo-friendly (return product details incl. image, for a UI):
-  GET /                       -> HTML demo page (search -> similar, with images)
-  GET /search?q=&limit=       -> products whose name matches a keyword
-  GET /products/{product_id}  -> one product's details
-  GET /similar?product_id=&num_similar=  -> { query, results } with details
-
-The index loads once at startup and is reused. Run:
-    uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-"""
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List
@@ -20,10 +10,11 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
+from .config import MAX_RESULTS, NL_CANDIDATES
+from .nlq import parse_query
 from ..similarity.engine import SimilarityIndex
-
-MAX_RESULTS = 50
 DEMO_PAGE = Path(__file__).parent / "demo.html"
 
 state: dict = {"index": None}
@@ -40,8 +31,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Amazon Fashion Similarity Search", version="1.1", lifespan=lifespan)
-# open CORS so a static/hosted frontend can call the API freely (demo deploy)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"], allow_headers=["*"])
+
+
+class NLQueryRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    num_results: int = Field(10, ge=1, le=MAX_RESULTS)
 
 
 def _require_index() -> SimilarityIndex:
@@ -61,7 +56,8 @@ def health() -> dict:
     index = state["index"]
     return {"status": "ok" if index else "unavailable",
             "index_size": len(index.records) if index else 0,
-            "backend": index.backend if index else None}
+            "backend": index.backend if index else None,
+            "query_parser": "llm+local"}
 
 
 @app.get("/find_similar_products")
@@ -84,6 +80,35 @@ def search(
     return _require_index().search(q, limit)
 
 
+@app.get("/semantic_search")
+def semantic_search(
+    q: str = Query(..., min_length=1, description="free-text product query"),
+    num_results: int = Query(10, ge=1, le=MAX_RESULTS),
+) -> dict:
+    results = _require_index().semantic_search(q, num_results)
+    return {"query": q, "results": results}
+
+
+@app.post("/nl_query")
+def nl_query(request: NLQueryRequest) -> dict:
+    index = _require_index()
+    parsed, parser = parse_query(request.query)
+    search_text = parsed["free_text"] or request.query
+    if parsed.get("colour"):
+        search_text = f"{parsed['colour']} {search_text}"
+    candidates = index.semantic_search(
+        search_text,
+        max(NL_CANDIDATES, request.num_results * 10),
+    )
+    results = _apply_filters(candidates, parsed)[:request.num_results]
+    return {
+        "query": request.query,
+        "parsed": parsed,
+        "parser": parser,
+        "results": results,
+    }
+
+
 @app.get("/products/{product_id}")
 def get_product(product_id: str) -> dict:
     record = _require_index().record(product_id)
@@ -92,15 +117,36 @@ def get_product(product_id: str) -> dict:
     return record
 
 
+def _apply_filters(records: List[dict], parsed: dict) -> List[dict]:
+    out = []
+    for row in records:
+        price = float(row.get("sales_price") or 0)
+        if parsed.get("min_price") is not None and price < parsed["min_price"]:
+            continue
+        if parsed.get("max_price") is not None and price > parsed["max_price"]:
+            continue
+        if parsed.get("brand") and parsed["brand"].lower() not in str(row.get("brand", "")).lower():
+            continue
+        if parsed.get("category") and parsed["category"].lower() not in str(row.get("child_category", "")).lower():
+            continue
+        if parsed.get("colour"):
+            c = parsed["colour"].lower()
+            name = str(row.get("product_name", "")).lower()
+            colour_field = str(row.get("colour", "")).lower()
+            if c not in name and c not in colour_field:
+                continue
+        out.append(row)
+    return out
+
+
 @app.get("/similar")
 def similar(
     product_id: str = Query(..., description="uniq_id of the query product"),
     num_similar: int = Query(10, ge=1, le=MAX_RESULTS),
 ) -> dict:
-    """Like /find_similar_products but returns full product details (for the UI)."""
     index = _require_index()
     try:
-        ids = index.query(product_id, num_similar)
+        results = index.query_records(product_id, num_similar)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"product_id not found: {product_id}")
-    return {"query": index.record(product_id), "results": [index.record(i) for i in ids]}
+    return {"query": index.record(product_id), "results": results}

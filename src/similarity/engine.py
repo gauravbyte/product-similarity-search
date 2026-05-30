@@ -1,27 +1,21 @@
-"""find_similar_products — the Part 1 deliverable (+ Part 3 FAISS bonus).
-
-Loads the pre-built hybrid vectors (see src/pipeline/embed.py) and returns the
-most similar products by cosine similarity. Vectors are unit-norm, so cosine is a
-dot product. If a FAISS index is present we use it for sub-linear ANN search
-(Part 3); otherwise we fall back to an exact brute-force scan.
-
-    from src.similarity.engine import find_similar_products
-    find_similar_products("26d41bdc1495de290bc8e6062d927729", 5)
+"""Product similarity engine — loads pre-built vectors, queries by cosine.
+Uses FAISS if available, falls back to brute-force.
 """
 import json
 from typing import List
 
 import numpy as np
 
-from ..pipeline.config import VECTORS_PATH, ID_MAP_PATH
+from ..pipeline.config import (
+    VECTORS_PATH, ID_MAP_PATH, SBERT_MODEL, STRUCTURED_FEATURES,
+)
 
 
 class SimilarityIndex:
-    """In-memory similarity index over the hybrid vectors (loaded once).
+    """In-memory cosine index over the hybrid vectors (loaded once).
 
     `records` holds the per-product display fields (name, brand, price, image)
     so the API can serve details without touching pandas/parquet at runtime.
-    Uses FAISS when its index exists, else exact brute-force cosine.
     """
 
     def __init__(self):
@@ -30,10 +24,10 @@ class SimilarityIndex:
         self.position = {row["uniq_id"]: i for i, row in enumerate(self.records)}
         self.ann = self._load_ann()
         self.backend = "faiss" if self.ann is not None else "brute-force"
+        self._semantic_model = None
 
     @staticmethod
     def _load_ann():
-        """Load the FAISS index, or None if faiss/index is unavailable."""
         try:
             from .ann import load_index
             return load_index()
@@ -47,20 +41,68 @@ class SimilarityIndex:
         return self._query_ann(i, num_similar) if self.ann is not None \
             else self._query_bruteforce(i, num_similar)
 
+    def query_records(self, product_id: str, num_similar: int) -> List[dict]:
+        if product_id not in self.position:
+            raise KeyError(f"product_id not found: {product_id}")
+        i = self.position[product_id]
+        pairs = self._query_ann_pairs(i, num_similar) if self.ann is not None \
+            else self._query_bruteforce_pairs(i, num_similar)
+        return [self._record_with_score(j, score) for j, score in pairs]
+
     def _query_ann(self, i: int, num_similar: int) -> List[str]:
-        # ask for one extra so we can drop the product itself
-        k = min(num_similar + 1, len(self.records))
-        _, idx = self.ann.search(self.vectors[i:i + 1], k)
-        hits = [j for j in idx[0] if j != i and j != -1]
-        return [self.records[j]["uniq_id"] for j in hits[:num_similar]]
+        return [self.records[j]["uniq_id"] for j, _ in self._query_ann_pairs(i, num_similar)]
 
     def _query_bruteforce(self, i: int, num_similar: int) -> List[str]:
+        return [self.records[j]["uniq_id"] for j, _ in self._query_bruteforce_pairs(i, num_similar)]
+
+    def _query_ann_pairs(self, i: int, num_similar: int) -> List[tuple[int, float]]:
+        k = min(num_similar + 1, len(self.records))
+        scores, idx = self.ann.search(self.vectors[i:i + 1], k)
+        hits = [(int(j), float(s)) for s, j in zip(scores[0], idx[0]) if j != i and j != -1]
+        return hits[:num_similar]
+
+    def _query_bruteforce_pairs(self, i: int, num_similar: int) -> List[tuple[int, float]]:
         scores = self.vectors @ self.vectors[i]   # cosine against every product
         scores[i] = -np.inf                        # never return the product itself
         n = min(num_similar, len(scores) - 1)
         top = np.argpartition(-scores, n)[:n]
         top = top[np.argsort(-scores[top])]
-        return [self.records[j]["uniq_id"] for j in top]
+        return [(int(j), float(scores[j])) for j in top]
+
+    def semantic_search(self, text: str, limit: int) -> List[dict]:
+        q = self._semantic_vector(text)
+        if self.ann is not None:
+            k = min(limit, len(self.records))
+            scores, idx = self.ann.search(q, k)
+            pairs = [(int(j), float(s)) for s, j in zip(scores[0], idx[0]) if j != -1]
+        else:
+            scores = self.vectors @ q[0]
+            k = min(limit, len(scores))
+            top = np.argpartition(-scores, k - 1)[:k]
+            top = top[np.argsort(-scores[top])]
+            pairs = [(int(j), float(scores[j])) for j in top]
+        return [self._record_with_score(j, score) for j, score in pairs[:limit]]
+
+    def _semantic_vector(self, text: str) -> np.ndarray:
+        if self._semantic_model is None:
+            from sentence_transformers import SentenceTransformer
+            self._semantic_model = SentenceTransformer(SBERT_MODEL)
+        embedding = self._semantic_model.encode([text], convert_to_numpy=True)
+        embedding = self._l2_normalise(embedding.astype("float32"))
+        q = np.zeros((1, self.vectors.shape[1]), dtype="float32")
+        text_dims = self.vectors.shape[1] - len(STRUCTURED_FEATURES)
+        q[:, :text_dims] = embedding[:, :text_dims]
+        return np.ascontiguousarray(self._l2_normalise(q), dtype="float32")
+
+    @staticmethod
+    def _l2_normalise(m: np.ndarray) -> np.ndarray:
+        norms = np.linalg.norm(m, axis=1, keepdims=True)
+        return m / np.clip(norms, 1e-9, None)
+
+    def _record_with_score(self, i: int, score: float) -> dict:
+        row = dict(self.records[i])
+        row["score"] = round(score, 6)
+        return row
 
     def record(self, product_id: str) -> "dict | None":
         """Display fields for one product (None if unknown)."""
@@ -68,7 +110,6 @@ class SimilarityIndex:
         return self.records[i] if i is not None else None
 
     def search(self, text: str, limit: int) -> List[dict]:
-        """Substring match on product_name — lets a demo discover product_ids."""
         t = text.lower()
         hits = [r for r in self.records if t in r["product_name"].lower()]
         return hits[:limit]

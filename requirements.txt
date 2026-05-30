@@ -11,3 +11,5 @@ faiss-cpu>=1.8              # ANN index for fast similarity search (Part 3 bonus
 fastapi>=0.110
 uvicorn[standard]>=0.27
 httpx>=0.27                 # required by FastAPI's TestClient
+requests>=2.31             # nlq.py — LLM HTTP call
+python-dotenv>=1.0         # api/config.py — load LLM_API_KEY from .env

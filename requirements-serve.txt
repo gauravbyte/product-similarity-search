@@ -1,6 +1,9 @@
-# Runtime-only deps for the API container (no torch/SBERT — the serving path
-# just loads the pre-built vectors and does cosine with numpy).
+# Runtime deps for the API container. Part 4 performs query-time SBERT encoding
+# for semantic_search / nl_query, so sentence-transformers is required at serve time.
 fastapi>=0.110
 uvicorn[standard]>=0.27
 numpy>=1.24
 faiss-cpu>=1.8     # ANN search at serve time (Part 3); falls back to numpy if absent
+sentence-transformers>=2.2
+requests>=2.31     # nlq.py — LLM HTTP call
+python-dotenv>=1.0 # api/config.py — load LLM_API_KEY from .env

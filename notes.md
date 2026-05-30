@@ -1,18 +1,12 @@
-# EDA Thoughts — Amazon Fashion Similarity Search
-
----
-
-## First look at the data
+# EDA — Amazon Fashion Similarity Search
 
 30k rows, 33 columns. Amazon India fashion products, Feb–Apr 2020. Loaded fine as ldjson.
 
-First thing I noticed — a lot of columns are basically empty. `name_of_author_for_books` has 1 row filled. `formats___editions` has 2. These are obviously book-specific fields that crept into the fashion dataset schema. Drop immediately, no thought needed.
+First thing I noticed — a lot of columns are basically empty. `name_of_author_for_books` has 1 row filled. `formats___editions` has 2. These are book-specific fields that crept into the fashion dataset schema. Drop immediately, no thought needed.
 
 `weight` looked useful but every single row is `999999999` — that's a sentinel for "not provided". Zero real values after cleaning. Drop.
 
 `colour` is only 20% filled. Would've been great for fashion similarity but can't use it reliably across 80% of the catalog. Defer it.
-
----
 
 ## The sparse ones I need to think about
 
@@ -24,8 +18,6 @@ First thing I noticed — a lot of columns are basically empty. `name_of_author_
 
 `brand` — 72.9% fill, so 8k+ products have no brand. Can't drop it, brand matters for similarity. Fill nulls with `"unknown"` as a real category.
 
----
-
 ## Price surprised me
 
 Median ₹590 but mean ₹862 — right-skewed heavily (skew ≈ 6.7). Log transform fixes it almost completely.
@@ -34,21 +26,15 @@ I expected FBA (Fulfilled by Amazon) products to be pricier. Actually the median
 
 But Prime vs non-Prime is a very different story — non-Prime median ₹399, Prime median ₹699. That's a 75% premium. Prime is actually a much better price-tier proxy than delivery type.
 
----
-
 ## Rating is basically useless as a differentiator
 
 Mean 4.04, most products cluster at discrete values (3.0, 3.5, 4.0, 4.5, 5.0). That's because most products have very few reviews — rating rounds to a single decimal. No correlation with price (r ≈ 0.02), no correlation with discount. It still goes in the feature vector but I don't expect it to pull much weight.
-
----
 
 ## The correlation matrix told me one useful thing
 
 `child_rank` and `parent_rank` correlate at r=0.459. That's strong enough that including both is redundant. Drop `parent_rank`, keep `child_rank` (more specific to the sub-category).
 
 Discount and price have r=-0.198 — makes sense, high-end products discount less. Both are still independently informative, just noting they're not independent.
-
----
 
 ## What text fields do I actually have?
 
@@ -61,8 +47,6 @@ Plan: concatenate all of these into one `text_blob` per product → SBERT encode
 
 Model choice: `all-MiniLM-L6-v2`. Fast on CPU, good for short product descriptions. If Indian product names become a problem, `paraphrase-multilingual-mpnet-base-v2` is the fallback.
 
----
-
 ## Structured features alongside the text
 
 After the text embedding I'll concatenate a small structured vector:
@@ -73,21 +57,15 @@ After the text embedding I'll concatenate a small structured vector:
 
 That's ~12 dims. Start with 70% weight on text / 30% on structured. Tune later by inspecting whether similar results feel right qualitatively.
 
----
-
 ## What about duplicates?
 
 Same `asin` can appear with different `uniq_id` — re-crawls. Need to check in phase 2 and deduplicate by keeping the most recent `crawl_timestamp`.
-
----
 
 ## Things I'm deferring consciously
 
 - `colour`: would help but 80% missing kills it for a global model
 - `other_items_customers_buy`: co-purchase graph signal, better suited for collaborative filtering phase, not content similarity
 - Image embeddings (CLIP/ResNet): image URLs are there but downloading + embedding 30k images is a separate pipeline step
-
----
 
 ## Questions I asked myself and answered
 
@@ -102,12 +80,7 @@ Embeddings live in high-dimensional space. L2 distance degrades there (curse of 
 
 ---
 
-*Phase 1 done. No data changes yet — all observations. Phase 2 is the cleaning script.*
-
----
----
-
-# Phase 2 Thoughts — Building the ETL Pipeline
+## ETL pipeline
 
 Turning the EDA decisions into code (`src/pipeline/`). Why it looks the way it does:
 
@@ -119,19 +92,19 @@ Turning the EDA decisions into code (`src/pipeline/`). Why it looks the way it d
 - **Parquet over CSV** — preserves dtypes, columnar, smaller. Costs one dep (`pyarrow`).
 - **Multimodal-ready:** `text_blob` feeds the text embedder; `primary_image_url` is carried through untouched so the image stage attaches later with no cleaning changes. Embedding/FAISS is *not* in this phase — ETL only.
 
-*Phase 2 done — `python -m src.pipeline` → `products_clean.parquet` (29,529 × 25) + `feature_meta.json`. Next: `embed.py`.*
+Output: `products_clean.parquet` (29,529 × 25) + `feature_meta.json`.
 
 ---
 
-# Phase 3 Thoughts — Embeddings + `find_similar_products`
+## Embeddings + find_similar_products
 
 - **Hybrid vector = 0.7·text + 0.3·structured.** Text half is SBERT (`all-MiniLM-L6-v2`, 384-dim) on `text_blob`; structured half is the 8 continuous/binary features. L2-normalise each half, scale by √weight, concat → rows come out unit-norm, so cosine == dot product.
 - **Categoricals stay out of the numeric block.** A `brand_code` of 5 vs 6 isn't "closer"; brand/category names are already in `text_blob`, so the embedding handles them semantically. Cleaner than fake one-hot distance.
-- **Brute-force cosine, not FAISS (yet).** At 29.5k rows one matrix-multiply scores everything in ~5ms — exact, zero extra deps, trivial to read. FAISS is the Part-3 bonus optimisation.
+- **Brute-force cosine first, not FAISS.** At 29.5k rows one matrix-multiply scores everything in ~5ms — exact, zero extra deps, trivial to read. FAISS is the bonus optimisation.
 - **Spot-check looked right:** a Pantaloons tee returns other Pantaloons slim-fit tees at similar prices; a Bengali handloom saree returns near-identical handloom sarees. Brand+category+price all line up without being hard filters.
 - **Multimodal hook still open:** add an image-embedding block to the hybrid concat later — the structure already supports a third weighted half.
 
-## Did I pick the right embedding? — benchmarked 3 (`benchmark.py`)
+### Did I pick the right embedding? — benchmarked 3 (`benchmark.py`)
 
 No labelled relevance data, so I used label-based proxies: good neighbours should share the query's category + brand and sit at a similar price. 500 random queries, k=10:
 
@@ -145,11 +118,9 @@ They basically tie — and that's expected: `text_blob` literally contains the b
 
 **Decision: go with SBERT.** It ties on the surface metrics and is ~30× slower to build, but the real product/query text in production won't be clean token overlap, and SBERT generalises there where TF-IDF can't. The benchmark is configurable (`--approaches --sample --k ...`) so this is an evidence-based choice, not an assumption — and TF-IDF stays a documented fallback if build cost ever matters.
 
-*Phase 3 done — `python -m src.pipeline.embed` → `hybrid_vectors.npy` (29,529 × 392) + `id_map.json`; `find_similar_products()` in `src/similarity/engine.py`.*
-
 ---
 
-# Phase 4 Thoughts — FastAPI Service + Docker
+## FastAPI service + Docker
 
 - **Endpoints:** `GET /find_similar_products?product_id=&num_similar=` → `List[str]`, plus `GET /health`. Index loads once at startup (lifespan) and is reused — each request is just a cosine scan.
 - **Error codes:** 404 unknown product_id, 422 for `num_similar` outside 1–50 (FastAPI's built-in query validation), 503 if artifacts aren't present yet. Swagger UI comes free at `/docs`.
@@ -159,13 +130,30 @@ They basically tie — and that's expected: `text_blob` literally contains the b
 
 ---
 
-# Phase 5 Thoughts — FAISS ANN (the bonus)
+## FAISS ANN
 
-- **Why ANN at all.** Brute-force cosine is exact but O(N) per query. The bonus asks for efficient search on larger catalogues, so I added a FAISS **IVFFlat** index: k-means splits the vectors into `nlist` cells and a query only scans the `nprobe` nearest cells instead of all 29.5k rows. Vectors are unit-norm so I use `METRIC_INNER_PRODUCT` (= cosine).
-- **Tuned nlist × nprobe** by sweeping 50–400 × 1–50 (recall@10 vs exact + latency, 300 queries). Criterion: fastest point still ≥0.99 recall → **nlist=400, nprobe=50** (recall 0.99, ~0.24 ms/query vs ~1.8 ms brute, ~7.7×). My first guess (nlist=100/nprobe=10) was only 0.957 recall, so the sweep was worth it. `nprobe` is the recall/speed knob.
-- **Read the Faiss paper** — "The Faiss library", Douze et al. 2024 ([arXiv:2401.08281](https://arxiv.org/pdf/2401.08281)). Key understanding: vector search is a **3-axis trade-off — speed vs recall vs memory**. IVF buys speed by probing fewer cells (costs recall); `nlist` should scale with the dataset size; and when *memory* becomes the bottleneck at scale you add **PQ/OPQ** to compress the vectors — IVF+PQ is the standard production combo. My IVFFlat keeps full float vectors, i.e. it spends memory to keep recall high — the right call at 30k, and the documented upgrade path is IVF+PQ (and the same index runs on GPU).
-- **Why not Annoy/HNSW.** FAISS is the de-facto standard, has a clean IVF→IVFPQ upgrade path for when the catalogue won't fit in RAM, and is GPU-upgradeable. Overkill at 30k, but the point is the scaling story.
-- **Graceful fallback.** The engine loads FAISS if the index + library exist, else falls back to exact brute-force. So `find_similar_products` always works; `/health` reports which backend is live.
-- **Gotcha I hit:** building the index inside `embed.py` segfaulted — `faiss` and `torch` both link libomp and collide in one process on macOS. Fix: the index is its own step (`python -m src.similarity.ann`, also a separate `RUN`/`-m` in Docker), never sharing a process with SBERT.
+Brute-force cosine is O(N) per query. IVFFlat: k-means partitions vectors into `nlist` cells, query scans only `nprobe` nearest cells → sub-linear.
 
-*Part 3 done — `make index` → `faiss.index`; engine auto-uses it (`backend: faiss` in `/health`). Next: multimodal images / k8s manifests.*
+Swept nlist × nprobe (50–400 × 1–50, recall@10 vs exact, 300 queries). Criterion: fastest point still ≥ 0.99 recall.
+
+Result: **nlist=400, nprobe=50** → recall 0.99, ~0.24 ms/query vs ~1.8 ms brute (~7.7×). First guess (nlist=100/nprobe=10) was only 0.957 recall — sweep was worth running. `nprobe` is the recall/speed knob.
+
+Reference: "The Faiss library", Douze et al. 2024 ([arXiv:2401.08281](https://arxiv.org/pdf/2401.08281)). Key takeaway: vector search is a 3-axis trade-off — speed vs recall vs memory. IVFFlat keeps full float vectors (spends memory, keeps recall high). At larger scale add PQ to compress — IVF+PQ is the standard production combo. Same index runs on GPU.
+
+**Why not Annoy/HNSW.** FAISS has a clean IVF→IVFPQ upgrade path for when the catalogue won't fit in RAM, and it's GPU-upgradeable. Overkill at 30k, but the point is the scaling story.
+
+**Gotcha:** building the FAISS index inside `embed.py` segfaulted — `faiss` and `torch` both link libomp and collide in one process on macOS. Fixed by making the index build its own step (`python -m src.similarity.ann`), never sharing a process with SBERT.
+
+---
+
+## NL query parser
+
+`POST /nl_query` accepts free-text like "black cotton saree under 500". Gemini Flash parses it into structured filters (brand, category, colour, price range), semantic search retrieves candidates, hard filters narrow results.
+
+**Why Gemini Flash over a local model.** Tried SmolLM2-135M and Qwen2.5-0.5B locally — both hallucinate fields (e.g. inventing brands, misclassifying colours) and the 135M model couldn't reliably produce valid JSON for simple queries. Gemini Flash is free-tier, fast (~1s latency), and produces correct structured output every time.
+
+**Regex fallback.** If the API is unavailable, falls back to a regex extractor that handles price ranges, `by <brand>`, and a colour keyword list. Good enough for simple queries when the API is down.
+
+**Colour filtering.** `colour` was originally deferred (80% missing). Now kept in the pipeline and `id_map.json`. The filter checks both the `colour` field and `product_name` — since most products mention colour in the name even when the dedicated field is empty.
+
+**OMP segfault fix.** Loading FAISS + SBERT in the same uvicorn process segfaults on macOS due to OpenMP thread conflicts with fork. Fixed by setting `OMP_NUM_THREADS=1` and `TOKENIZERS_PARALLELISM=false` at process start.
