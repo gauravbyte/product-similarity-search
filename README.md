@@ -5,7 +5,9 @@ most similar products from a 30,000-row Amazon India fashion catalogue, exposed 
 a REST API with a small demo UI.
 
 The original task description is preserved in [ASSIGNMENT.md](ASSIGNMENT.md). My
-reasoning and design decisions at each step are journaled in [notes.md](notes.md).
+reasoning and design decisions at each step are journaled in [notes.md](docs/notes.md).
+The full system design and production-scaling write-up — with diagrams — is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -25,6 +27,17 @@ ldjson ──ETL──> products_clean.parquet ──embed──> hybrid_vectors
          impute,                         structured,
          feature-eng)                    L2-normalised)
 ```
+
+---
+
+## Architecture
+
+The system as built (MVP) and how it scales to multi-tenant production. Full detail in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+![Architecture — Three Scaling Approaches](docs/images/architecture-diagram.png)
+
+*Three scaling approaches: A (MVP, ≤10 tenants) → B (shared catalogue, 10–50) → C (per-tenant Qdrant, 50+), with the migration path between them.*
 
 ---
 
@@ -119,7 +132,7 @@ EDA_Amazon_Marketing_Data.ipynb   exploratory analysis
 - **Serving image.** The runtime loads pre-built vectors/FAISS for product-id similarity;
   Part 4 also includes sentence-transformers for query-time semantic search.
 - **Data filling:** price → category-median then global fallback; discount → 0 (no
-  discount is a real state); brand/category → `"unknown"`. Full rationale in `notes.md`.
+  discount is a real state); brand/category → `"unknown"`. Full rationale in `docs/notes.md`.
 
 ---
 
